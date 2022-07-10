@@ -4,8 +4,6 @@ using Keras.Optimizers;
 
 using Numpy;
 
-using static Tensorflow.Binding;
-
 namespace RegressionNeuralNetwork
 {
     internal class Program
@@ -23,9 +21,6 @@ namespace RegressionNeuralNetwork
 
             NDarray yTrain = y[":40"];
             NDarray yTest = y["40:"];
-
-            // Setting TensorFlow random seed to 42.
-            tf.set_random_seed(42);
 
             // Creating Multiple unique models to compare how the **Hyperparameters** can
             // influence the **predictions** that the model will be able to make.

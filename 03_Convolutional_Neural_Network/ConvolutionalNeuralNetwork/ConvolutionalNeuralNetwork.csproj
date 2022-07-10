@@ -9,13 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Emgu.CV" Version="4.5.5.4823" />
-    <PackageReference Include="Emgu.CV.runtime.windows" Version="4.5.5.4823" />
     <PackageReference Include="Keras.NET" Version="3.8.5" />
     <PackageReference Include="Plotly.NET.CSharp" Version="0.0.1" />
-    <PackageReference Include="SciSharp.TensorFlow.Redist-Windows-GPU" Version="2.7.0" />
-    <PackageReference Include="TensorFlow.Keras" Version="0.7.0" />
-    <PackageReference Include="TensorFlow.NET" Version="0.70.1" />
   </ItemGroup>
 
 </Project>

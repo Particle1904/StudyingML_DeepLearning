@@ -5,17 +5,12 @@ using Keras.Optimizers;
 
 using Numpy;
 
-using static Tensorflow.Binding;
-
 namespace ClassificationNeuralNetwork
 {
     internal class Program
     {
         static void Main(string[] args)
         {
-            //tf.debugging.set_log_device_placement(true);
-            //tf.device(@"/CPU:0");
-
             // Loading the FashionMNIST dataset using Keras.
             ((NDarray, NDarray), (NDarray, NDarray)) dataset = FashionMNIST.LoadData();
 
@@ -33,8 +28,6 @@ namespace ClassificationNeuralNetwork
             // Creating a human readable Labels List. Unused in final code.
             string[] labels = new string[] { "T-shirt/top", "Trouser", "Pullover", "Dress",
                 "Coat", "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot" };
-
-            tf.set_random_seed(42);
 
             // Creating the model.
             Sequential model = new Sequential();

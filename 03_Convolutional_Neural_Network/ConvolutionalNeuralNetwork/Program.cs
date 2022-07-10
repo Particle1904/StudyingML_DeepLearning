@@ -1,19 +1,12 @@
-﻿using Emgu.CV;
-
-using Keras;
-using Keras.Datasets;
+﻿using Keras;
 using Keras.Layers;
 using Keras.Models;
 using Keras.Optimizers;
 using Keras.PreProcessing.Image;
-using Keras.Utils;
-
-using Numpy;
 
 using Plotly.NET.CSharp;
 
 using static Plotly.NET.GenericChart;
-using static Tensorflow.Binding;
 
 namespace ConvolutionalNeuralNetwork
 {
