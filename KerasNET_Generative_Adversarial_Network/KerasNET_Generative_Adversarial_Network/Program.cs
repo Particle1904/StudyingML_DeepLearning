@@ -1,4 +1,7 @@
-﻿using Keras;
+﻿using Emgu;
+using Emgu.CV;
+
+using Keras;
 using Keras.Layers;
 using Keras.Models;
 using Keras.Optimizers;
@@ -8,8 +11,11 @@ using KerasNET_Generative_Adversarial_Network.src;
 
 using Numpy;
 
-using System.Drawing;
-using System.Drawing.Imaging;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
+
+using System.Diagnostics;
 
 namespace KerasNET_Generative_Adversarial_Network
 {
@@ -17,57 +23,40 @@ namespace KerasNET_Generative_Adversarial_Network
     {
         static void Main(string[] args)
         {
+            Keras.Utils.Util.DisablePySysConsoleLog = true;
             int epochs = 50000;
-            int batchSize = 32;
-            int samplePeriod = 200;
+            int batchSize = 12;
+            int samplePeriod = 1;
+            int latentDimensions = 100;
+            Tuple<int, int> kernelSize = new Tuple<int, int>(3, 3);
+            Tuple<int, int> strides = new Tuple<int, int>(2, 2);
+            Tuple<int, int> upsampleSize = new Tuple<int, int>(2, 2);
+            Tuple<int, int> imageTargetSize = new Tuple<int, int>(224, 224);
 
-            string dataPath = @"E:\dev\StudyingML_DeepLearning\Datasets\225xPokemonJPG";
+            #region Data
+            string dataPath = @"E:\dev\StudyingML_DeepLearning\Datasets\225xPokemonPNG";
 
             List<string>? imagesInDirectory = Directory.EnumerateFiles($@"{dataPath}\train").ToList();
             Console.WriteLine($"Found {imagesInDirectory.Count()} in directory!");
 
-            Console.WriteLine("Allocating NDarray to store dataset...");
-            NDarray trainImages = np.array(new float[imagesInDirectory.Count, 224, 224, 3]);
+            Console.WriteLine("Creating Data Generator to scale data between -1 and +1...");
+            ImageDataGenerator imageDataGenerator = new ImageDataGenerator(featurewise_center: true,
+                samplewise_center: true, rescale: 2.0f / 255.0f, horizontal_flip: true);
+            KerasIterator? imageDataset = imageDataGenerator.FlowFromDirectory(dataPath, imageTargetSize,
+                class_mode: "categorical", batch_size: batchSize);
 
-            for (int i = 0; i < imagesInDirectory.Count(); i++)
-            {
-                var imageFromFile = ImageUtil.LoadImg(imagesInDirectory[i], target_size: new Shape(224, 224, 3));
-                trainImages[i] = ImageUtil.ImageToArray(imageFromFile);
-                Console.WriteLine($"Loaded {i + 1} out of {imagesInDirectory.Count()}");
-            }
-            Console.WriteLine("Finished loading stage...");
+            #endregion
 
-            Console.WriteLine("Preprocessing data...");
-            trainImages = trainImages / 255.0f * 2 - 1;
-            Console.WriteLine("Finished preprocessing stage...");
-
-            Console.WriteLine($"Shape of trainImages: {trainImages.shape}");
-
-            int latentDimensions = 200;
-
-            //var trainShape = dataGenerator;
-
-            // Building the Generator
-            var inputG = new Input(shape: latentDimensions);
-            var x = new Dense(256).Set(inputG);
-            x = new LeakyReLU(0.2f).Set(x);
-            x = new BatchNormalization(momentum: 0.8f).Set(x);
-            x = new Dense(512).Set(x);
-            x = new LeakyReLU(0.2f).Set(x);
-            x = new BatchNormalization(momentum: 0.8f).Set(x);
-            x = new Dense(1024).Set(x);
-            x = new LeakyReLU(0.2f).Set(x);
-            x = new BatchNormalization(momentum: 0.8f).Set(x);
-            var outputG = new Dense(224 * 224, activation: "tanh").Set(x);
-
-            Model generatorModel = new Model(new BaseLayer[] { inputG }, new BaseLayer[] { outputG });
-
-            // Building the Discriminator
-            var inputD = new Input(shape: new Shape(224 * 224));
-            var x2 = new Dense(512).Set(inputD);
+            #region Discriminator Model
+            var inputD = new Input(shape: new Shape(224, 224, 3));
+            var x2 = new Conv2D(32, kernelSize, strides, padding: "same").Set(inputD);
             x2 = new LeakyReLU(alpha: 0.2f).Set(x2);
-            x2 = new Dense(256).Set(x2);
+            x2 = new Conv2D(16, kernelSize, strides, padding: "same").Set(x2);
             x2 = new LeakyReLU(alpha: 0.2f).Set(x2);
+            x2 = new Conv2D(8, kernelSize, strides, padding: "same").Set(x2);
+            x2 = new LeakyReLU(alpha: 0.2f).Set(x2);
+            x2 = new Dropout(0.10f).Set(x2);
+            x2 = new Flatten().Set(x2);
             var outputD = new Dense(1, activation: "sigmoid").Set(x2);
 
             Model discriminatorModel = new Model(new BaseLayer[] { inputD }, new BaseLayer[] { outputD });
@@ -75,66 +64,87 @@ namespace KerasNET_Generative_Adversarial_Network
             discriminatorModel.Compile(new Adam(0.0002f, 0.5f),
                 loss: "binary_crossentropy",
                 metrics: new string[] { "accuracy" });
+            #endregion
 
-            BaseLayer z = new Input(shape: new Shape(latentDimensions));
-            BaseLayer? image = generatorModel.Call(z);
+            #region Generator Model
+            var inputG = new Input(shape: latentDimensions);
+            var x = new Dense(128 * 28 * 28).Set(inputG);
+            x = new LeakyReLU(0.2f).Set(x);
+            x = new Reshape(new Shape(28, 28, 128)).Set(x);
+            x = new Conv2DTranspose(64, upsampleSize, strides, "same").Set(x);
+            x = new LeakyReLU(0.2f).Set(x);
+            x = new Conv2DTranspose(32, upsampleSize, strides, "same").Set(x);
+            x = new LeakyReLU(0.2f).Set(x);
+            x = new Conv2DTranspose(16, upsampleSize, strides, "same").Set(x);
+            x = new LeakyReLU(0.2f).Set(x);
+            var outputG = new Conv2D(3, new Tuple<int, int>(28, 28), padding: "same", activation: "tanh").Set(x);
+
+            Model generatorModel = new Model(new BaseLayer[] { inputG }, new BaseLayer[] { outputG });
+            #endregion
+
+            #region Combined Model
+            BaseLayer inputC = new Input(shape: new Shape(latentDimensions));
+            BaseLayer? image = generatorModel.Call(inputC);
 
             discriminatorModel.SetTrainable(false);
 
             BaseLayer? fakePrediction = discriminatorModel.Call(image);
 
-            Model combinedModel = new Model(new BaseLayer[] { z }, new BaseLayer[] { fakePrediction });
+            Model combinedModel = new Model(new BaseLayer[] { inputC }, new BaseLayer[] { fakePrediction });
 
-            combinedModel.Compile(new Adam(), loss: "binary_crossentropy");
+            combinedModel.Compile(new Adam(0.0002f, 0.5f), loss: "binary_crossentropy");
+            #endregion
 
             NDarray? ones = np.ones(batchSize);
             NDarray? zeros = np.zeros(batchSize);
+
+            Console.Clear();
 
             generatorModel.Summary();
             discriminatorModel.Summary();
             combinedModel.Summary();
 
+            Stopwatch stopwatch = new Stopwatch();
+
             // Training the model
             for (int i = 0; i <= epochs; i++)
             {
-                NDarray<int>? randomIndexTrain = np.random.randint(0, trainImages.shape[0]);
+                stopwatch.Start();
 
-                NDarray? realImages = trainImages[randomIndexTrain];
-
-                NDarray? noise = np.random.rand(batchSize, latentDimensions);
+                NDarray? noise = np.random.randn(batchSize, latentDimensions);
                 NDarray? fakeImages = generatorModel.Predict(noise);
 
-                discriminatorModel.TrainOnBatch(realImages, ones);
-                discriminatorModel.TrainOnBatch(fakeImages, zeros);
+                //Python.Runtime.PyTuple arguments = new Python.Runtime.PyTuple();
+                //dynamic realImagesDynamic = imageDataset.PyObject.InvokeMethod("__next__", arguments);
+                //Console.WriteLine($"{realImagesDynamic}");
+                //NDarray? realImages = realImagesDynamic;
 
-                noise = np.random.rand(batchSize, latentDimensions);
-                combinedModel.TrainOnBatch(noise, ones);
+                Keras.Callbacks.History? historyDReal = discriminatorModel.FitGenerator(imageDataset, epochs: 1, verbose: 0);
+                //discriminatorModel.TrainOnBatch(realImages, ones);
+                double[]? historyDFake = discriminatorModel.TrainOnBatch(fakeImages, zeros);
 
-                if (i % 100 == 0)
+                NDarray? noiseTrain = np.random.randn(batchSize, latentDimensions);
+                double[]? historyC = combinedModel.TrainOnBatch(noiseTrain, ones);
+
+                if (i % 100 == 0 && i != 0)
                 {
-                    Console.WriteLine($"Epoch: {i + 1}");
+                    SaveModelCheckPoint(i);
                 }
                 if (i % samplePeriod == 0)
                 {
-                    SaveSamples();
+                    SaveSamples(5, i);
                 }
+
+                Console.WriteLine($"EPOCH: {i + 1} | TIME: {stopwatch.Elapsed.TotalSeconds.ToString("F3")} | D REAL LOSS: {historyDReal.HistoryLogs.Values.First().First().ToString("F7")} | D FAKE LOSS: {historyDFake.First().ToString("F7")} | COMBINED LOSS: {historyC.Last().ToString("F4")}");
+                stopwatch.Restart();
             }
 
-            if (!Directory.Exists(@".\Models"))
+            stopwatch.Stop();
+
+            void SaveSamples(int numberOfSamples, int epoch)
             {
-                Directory.CreateDirectory(@".\Models");
-            }
-
-            combinedModel.Save(@".\Models\model");
-
-            void SaveSamples()
-            {
-                int rows = 5;
-                int columns = 5;
-                NDarray? noise = np.random.randn(new int[] { rows * columns, latentDimensions });
-
-                NDarray? images = generatorModel.Predict(noise);
-                images = 0.5f * images + 0.5f;
+                NDarray? noise = np.random.randn(new int[] { numberOfSamples, latentDimensions });
+                NDarray? images = generatorModel.Predict(noise, batch_size: numberOfSamples);
 
                 if (!Directory.Exists(@".\GeneratedImages"))
                 {
@@ -143,26 +153,29 @@ namespace KerasNET_Generative_Adversarial_Network
 
                 for (int i = 0; i < images.len; i++)
                 {
-                    byte[] imageBytes = new byte[100];
-                    MemoryStream memoryStream = new MemoryStream(imageBytes);
-                    Bitmap bitmap = new Bitmap(memoryStream);
-                    string[]? existingFiles = Directory.GetFiles(@".\GeneratedImages");
-                    if (existingFiles.Length <= 0)
+                    var imageCSharp = images[i].GetData<float>();
+
+                    byte[] imageBytes = new byte[224 * 224 * 3];
+                    for (int j = 0; j < imageCSharp.Length; j++)
                     {
-                        bitmap.Save(@".\0001", ImageFormat.Png);
+                        imageBytes[j] = Convert.ToByte((0.5f * imageCSharp[j] + 0.5f) * 255);
                     }
-                    else
+
+                    using (Image<Rgb24> image = Image.LoadPixelData<Rgb24>(imageBytes, 224, 224))
                     {
-                        string lastFileSaved = existingFiles.Last();
-                        string[]? splitPath = lastFileSaved.Split(@"\");
-                        string? fileName = splitPath.Last().ToString().Replace(".png", "");
-                        bool fileNumber = Int32.TryParse(fileName, out int result);
-                        if (fileNumber == true)
-                        {
-                            bitmap.Save($@".\{result++}", ImageFormat.Png);
-                        }
+                        image.Save(@$".\GeneratedImages\epoch{epoch}-{i}.png", new PngEncoder());
                     }
                 }
+            }
+
+            void SaveModelCheckPoint(int epochs)
+            {
+                if (!Directory.Exists(@".\Models"))
+                {
+                    Directory.CreateDirectory(@".\Models");
+                }
+
+                combinedModel.Save($@".\Models\model-epoch{epochs}");
             }
         }
     }
